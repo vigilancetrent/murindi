@@ -1,0 +1,98 @@
+# ============================================
+# Murindi - Open Source Repository
+# ============================================
+
+# ========================
+# Frontend
+# ========================
+# Frontend source lives in the private Murindi-Vue repo. The published
+# `ghcr.io/<owner>/murindi-frontend` image is consumed via docker-compose
+# by default. For local source iteration, clone Murindi-Vue into the
+# `/Murindi-Vue/` slot below and run `docker compose up --build` — that
+# path is referenced by docker-compose.yml's frontend `build.context`
+# directive. Nothing under these paths should ever be committed here.
+/murindi_vue/
+/Murindi-Vue-src/
+/Murindi-Vue/
+/frontend/
+
+# ========================
+# Environment & Secrets
+# ========================
+.env
+.env.local
+.env.*.local
+backend_api_python/.env
+
+# ========================
+# IDE & OS
+# ========================
+.idea/
+.vscode/
+agent-tools/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.iml
+
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+/dist/
+build/
+*.egg
+.eggs/
+venv/
+.venv/
+env/
+
+# ========================
+# Node (if any remain)
+# ========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ========================
+# Logs & Runtime Data
+# ========================
+*.log
+backend_api_python/logs/
+backend_api_python/dist/
+
+# MCP server build artifacts (PyPI release output, never committed)
+mcp_server/dist/
+mcp_server/build/
+mcp_server/.smoketest/
+mcp_server/src/murindi_mcp.egg-info/
+backend_api_python/data/murindi.db
+backend_api_python/data/memory/
+
+# ========================
+# i18n tooling
+# ========================
+scripts/.i18n-cache/
+Murindi-Vue-src/src/locales/lang/*.bak
+
+# ========================
+# Docker
+# ========================
+docker-compose.override.yml
+
+
+# --- rebrand hardening: never commit secrets/build artifacts ---
+.env
+*.local
+__pycache__/
+*.pyc
+dist/
+build/
