@@ -4,6 +4,37 @@ This document records version updates, new features, bug fixes, and database mig
 
 ---
 
+## Murindi 3.1.0 (2026-06-11) — Systematic strategy suite + risk & intelligence overlays
+
+A research-to-production strategy layer, every edge independently re-validated on real
+multi-year data (out-of-sample + permutation + cost-stress + Monte-Carlo). No backtest is
+trusted on faith. See `docs/STRATEGY_INTEGRATION_REPORT.md` and `docs/PAPER_TRADING_RUNBOOK.md`.
+
+### Added
+- **Trend-following strategy** (`backend_api_python/strategies/trend_following_donchian.py`):
+  Donchian breakout + ATR stop + opposite-channel trailing exit, as a broker-agnostic
+  `ScriptStrategy`. Built-in volatility-targeting and an optional Hurst regime filter.
+  Validated: gold PF 1.49 (OOS 1.68, beats permutation), confirmed on BTC/ETH.
+- **Vol-targeted multi-sleeve portfolio**: gold + silver + BTC + ETH (`strategies/portfolio_config.json`),
+  with backtest/A-B tooling and a tear-sheet (`reports/portfolio_tearsheet.png`). Sharpe ~0.96, max DD ~8%.
+- **Risk overlays** (`backend_api_python/app/services/risk/`): volatility-targeting sizer and a
+  portfolio **kill-switch** (max-drawdown / daily-loss / expectancy-decay) wired into
+  `TradingExecutor` — gates new entries only, never exits, **off by default**.
+- **Market intelligence, LLM-free** (`backend_api_python/app/services/intelligence/`): a
+  **news/event guard** (economic-calendar blackout + breaking-news keyword shock monitor) with
+  **block** and **continuation** modes, wired into the executor entry gate; plus a Hurst **regime**
+  classifier. Fail-open; no GPU, no API keys required.
+- **Validation gauntlet** (`backend_api_python/scripts/`): `validate_strategy`, `finalize_basket`,
+  `portfolio_backtest`, `scan_new_factors`, `test_new_sleeves`, `revalidate_*`.
+
+### Notes
+- Independently **rejected** (no significant edge): SMC be1run, momentum_pro, KISS CRT, and a
+  dedicated news_continuation strategy. Trend-following on gold/crypto is the confirmed survivor.
+- Edges are **modest and regime-dependent** — paper-trade before capital. No guarantees.
+- All new entry gates (kill-switch, news guard) are opt-in via each strategy's `trading_config`.
+
+---
+
 ## murindi-mcp 0.2.0 (2026-05-29) — PyPI package
 
 Standalone MCP server release (install: `pip install murindi-mcp==0.2.0` / `uvx murindi-mcp@0.2.0`).
