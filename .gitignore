@@ -96,3 +96,7 @@ __pycache__/
 *.pyc
 dist/
 build/
+
+# generated strategy artifacts
+backend_api_python/strategies/_basket_trades.json
+backend_api_python/scripts/fonts/

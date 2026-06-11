@@ -1,0 +1,48 @@
+{
+  "name": "Murindi Trend Portfolio v1",
+  "description": "Vol-targeted multi-sleeve trend-following. The only research edge that survived independent multi-year, cost-aware, out-of-sample, permutation-tested re-validation.",
+  "strategy_file": "trend_following_donchian.py",
+  "base_risk_pct_per_trade": 0.005,
+  "sleeves": [
+    { "symbol": "XAUUSD", "timeframe": "4h", "venue": "mt5",
+      "params": { "donchian_entry": 20, "donchian_exit": 10, "atr_period": 14, "atr_mult": 2.0,
+                  "allow_short": true, "vol_target_annual": 0.15, "bars_per_year": 1512 } },
+    { "symbol": "BTCUSD", "timeframe": "4h", "venue": "mt5",
+      "params": { "donchian_entry": 20, "donchian_exit": 10, "atr_period": 14, "atr_mult": 2.0,
+                  "allow_short": true, "vol_target_annual": 0.15, "bars_per_year": 2190 } },
+    { "symbol": "XAGUSD", "timeframe": "4h", "venue": "mt5",
+      "params": { "donchian_entry": 20, "donchian_exit": 10, "atr_period": 14, "atr_mult": 2.0,
+                  "allow_short": true, "vol_target_annual": 0.15, "bars_per_year": 1512 } },
+    { "symbol": "ETHUSD", "timeframe": "1d", "venue": "ccxt", "factor": "crypto",
+      "note": "4th sleeve: confirmed trend edge (beats permutation). ~0.84 asset-correlated to BTC, so size BTC+ETH together as one ~50% crypto allocation. Tested daily; if H4 ETH data is available, prefer 4h with bars_per_year 2190.",
+      "params": { "donchian_entry": 20, "donchian_exit": 10, "atr_period": 14, "atr_mult": 2.0,
+                  "allow_short": true, "vol_target_annual": 0.15, "bars_per_year": 365 } }
+  ],
+  "factor_allocation_note": "Two uncorrelated factors: METALS (XAU+XAG, ~0.77 internal) and CRYPTO (BTC+ETH, ~0.84 internal); metals<->crypto ~0.07. Keep ~50/50 metals/crypto; do not let crypto dominate.",
+  "kill_switch": {
+    "max_drawdown_pct": 0.15,
+    "daily_loss_pct": 0.04,
+    "min_expectancy_R": 0.0,
+    "expectancy_window": 40,
+    "hard_halt": true
+  },
+  "news_guard": {
+    "_note": "LLM-free entry guard. Add this to each sleeve's trading_config. Blocks NEW ENTRIES (never exits) during high-impact event windows (NFP/CPI/FOMC/ECB/...) and keyword-detected market shocks. Pure downside protection; recommended ON. Fail-open (never blocks if offline).",
+    "economic_calendar": true,
+    "breaking_news": true
+  },
+  "regime_filter_note": "OPTIONAL strategy param (regime_filter=true). A/B on gold: PF 1.49->1.78 and max DD 18.3%->8.2%, BUT trades drop 313->100 and it no longer beats the permutation test (sample too small + the Hurst threshold is fittable). Keep OFF for the significance-validated config; enable only if you prefer fewer, higher-conviction trades and lower drawdown.",
+  "expected_backtest_2019_2026": {
+    "sharpe": 0.95,
+    "max_drawdown": 0.075,
+    "cagr": 0.18,
+    "win_rate": 0.34,
+    "sleeve_correlation": { "XAUUSD_BTCUSD": -0.01, "XAUUSD_XAGUSD": 0.17, "BTCUSD_XAGUSD": 0.05 }
+  },
+  "promotion_gate": {
+    "paper_days_min": 30,
+    "live_expectancy_R_min": 0.05,
+    "fills_match_backtest": true,
+    "capital_ramp": ["5%", "25%", "50%", "100%"]
+  }
+}

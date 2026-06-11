@@ -33,6 +33,17 @@ from app.services.strategy_script_runtime import (
     StrategyScriptContext,
     compile_strategy_script_handlers,
 )
+try:
+    # Optional portfolio circuit breaker. Executor must still load if absent.
+    from app.services.risk.kill_switch import KillSwitch, KillSwitchConfig
+except Exception:
+    KillSwitch = None
+    KillSwitchConfig = None
+try:
+    # Optional LLM-free news/event entry guard.
+    from app.services.intelligence.news_calendar import NewsGuard
+except Exception:
+    NewsGuard = None
 
 logger = get_logger(__name__)
 
@@ -139,9 +150,74 @@ class TradingExecutor:
         # Per-strategy exchange fee-rate cache: {strategy_id: {"maker": float, "taker": float}}
         self._exchange_fee_cache: Dict[int, Optional[Dict[str, float]]] = {}
         self._exchange_fee_cache_lock = threading.Lock()
-        
+
+        # Optional per-strategy kill-switch (portfolio circuit breaker). Lazily
+        # created from trading_config['kill_switch']; absent -> no gating (default off).
+        self._kill_switches: Dict[int, Any] = {}
+        self._kill_switch_lock = threading.Lock()
+
+        # Optional shared news/event guard (LLM-free). Enabled per strategy via
+        # trading_config['news_guard']; one shared instance so symbols share cached news.
+        self._news_guard = None
+        self._news_guard_lock = threading.Lock()
+
         # 确保数据库字段存在
         self._ensure_db_columns()
+
+    def _get_kill_switch(self, strategy_id: int, trading_config: Optional[Dict[str, Any]]):
+        """Return a per-strategy KillSwitch if trading_config enables one, else None.
+
+        Enable by adding a ``kill_switch`` dict to the strategy's trading_config, e.g.
+        ``{"max_drawdown_pct": 0.15, "daily_loss_pct": 0.04}``. Absent -> no gating.
+        The switch only blocks NEW ENTRIES; exits/management always proceed.
+        """
+        if KillSwitch is None:
+            return None
+        try:
+            cfg = (trading_config or {}).get("kill_switch")
+        except Exception:
+            cfg = None
+        if not cfg:
+            return None
+        with self._kill_switch_lock:
+            ks = self._kill_switches.get(int(strategy_id))
+            if ks is None:
+                try:
+                    fields = getattr(KillSwitchConfig, "__dataclass_fields__", {})
+                    ks = KillSwitch(KillSwitchConfig(**{k: v for k, v in cfg.items() if k in fields}))
+                except Exception as e:
+                    logger.warning("kill_switch init failed sid=%s: %s", strategy_id, e)
+                    return None
+                self._kill_switches[int(strategy_id)] = ks
+            return ks
+
+    def _get_news_guard(self, trading_config: Optional[Dict[str, Any]]):
+        """Return the shared NewsGuard if trading_config enables it, else None.
+
+        Enable with a ``news_guard`` block in trading_config, e.g.
+        ``{"economic_calendar": true, "breaking_news": true}``. Absent -> no gating.
+        Blocks NEW ENTRIES during high-impact event windows / market shocks. Fail-open.
+        """
+        if NewsGuard is None:
+            return None
+        try:
+            cfg = (trading_config or {}).get("news_guard")
+        except Exception:
+            cfg = None
+        if not cfg:
+            return None
+        with self._news_guard_lock:
+            if self._news_guard is None:
+                opts = cfg if isinstance(cfg, dict) else {}
+                try:
+                    self._news_guard = NewsGuard(
+                        fmp_enabled=bool(opts.get("economic_calendar", True)),
+                        breaking_news=bool(opts.get("breaking_news", True)),
+                    )
+                except Exception as e:
+                    logger.warning("news_guard init failed: %s", e)
+                    return None
+            return self._news_guard
 
     def _estimate_indicator_warmup_bars(
         self,
@@ -959,6 +1035,12 @@ class TradingExecutor:
                 )
                 ctx.balance = float(eq)
                 ctx.equity = float(eq)
+                ks = self._get_kill_switch(strategy_id, tc)
+                if ks is not None:
+                    ks.update_equity(float(eq), when=datetime.now())
+                ng = self._get_news_guard(tc)
+                if ng is not None:
+                    ng.refresh()  # TTL-gated network refresh, off the entry hot path
         except Exception:
             pass
 
@@ -4359,6 +4441,25 @@ class TradingExecutor:
 
             sig = (signal_type or "").strip().lower()
 
+            # --- Kill-switch: block NEW ENTRIES when portfolio risk limits are breached.
+            # Exits/management (close_*, reduce_*) are never blocked, so we can never be
+            # trapped in a position. No-op unless trading_config enables 'kill_switch'.
+            if sig in ("open_long", "open_short", "add_long", "add_short"):
+                ks = self._get_kill_switch(strategy_id, trading_config)
+                if ks is not None and not ks.allow_new_entry():
+                    append_strategy_log(
+                        strategy_id, "warning",
+                        f"KILL-SWITCH blocked {sig} {symbol}: {ks.status().get('breaches')}",
+                    )
+                    return False
+                ng = self._get_news_guard(trading_config)
+                if ng is not None:
+                    ok_news, news_reason = ng.allow_new_entry(symbol)
+                    if not ok_news:
+                        append_strategy_log(
+                            strategy_id, "info", f"NEWS-GUARD blocked {sig} {symbol}: {news_reason}")
+                        return False
+
             # Both-mode flip: close opposing leg before open (matches BacktestService).
             if indicator_both_mode and sig == "open_long" and state == "short":
                 self._execute_signal(
@@ -5524,6 +5625,20 @@ class TradingExecutor:
                 grid_matched_profit=grid_matched_profit,
                 leg=leg,
             )
+            # Feed realized per-trade return to the kill-switch (edge-decay detection).
+            # Only closes carry realized profit; normalize by latest equity for a
+            # scale-free R-proxy. No-op unless a kill-switch is enabled for this strategy.
+            try:
+                if profit is not None and str(type or "").strip().lower() in (
+                    "close_long", "close_short", "reduce_long", "reduce_short"
+                ):
+                    ks = self._kill_switches.get(int(strategy_id))
+                    if ks is not None:
+                        eq = float(getattr(ks, "equity", 0.0) or 0.0)
+                        if eq > 0:
+                            ks.record_trade((float(profit) - float(commission or 0.0)) / eq)
+            except Exception:
+                pass
         except Exception as e:
             logger.error(f"Failed to record trade: {e}")
 
