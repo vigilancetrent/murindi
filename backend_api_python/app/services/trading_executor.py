@@ -213,6 +213,8 @@ class TradingExecutor:
                     self._news_guard = NewsGuard(
                         fmp_enabled=bool(opts.get("economic_calendar", True)),
                         breaking_news=bool(opts.get("breaking_news", True)),
+                        mode=str(opts.get("mode", "block")),
+                        spike_block_min=int(opts.get("spike_block_min", 15)),
                     )
                 except Exception as e:
                     logger.warning("news_guard init failed: %s", e)

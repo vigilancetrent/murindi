@@ -74,9 +74,16 @@ _BLACKOUT = {"high": (60, 120), "medium": (15, 30), "low": (5, 10)}  # (minutes 
 
 
 class EconomicCalendar:
-    def __init__(self, fmp_enabled: bool = True, refresh_sec: int = 3600):
+    def __init__(self, fmp_enabled: bool = True, refresh_sec: int = 3600,
+                 mode: str = "block", spike_block_min: int = 15):
         self._fmp = fmp_enabled and requests is not None
         self._refresh_sec = refresh_sec
+        # mode 'block'        -> block the full [before, after] window (default protection).
+        # mode 'continuation' -> block only the pre-event + violent spike
+        #                        [before, spike_block_min], then ALLOW entries so a
+        #                        trend strategy can ride the established post-news move.
+        self._mode = str(mode or "block").lower()
+        self._spike_block_min = int(spike_block_min)
         self._fetched: list[tuple[str, str, datetime, str]] = []
         self._last_fetch = 0.0
 
@@ -118,8 +125,10 @@ class EconomicCalendar:
             if cur not in curs:
                 continue
             before, after = _BLACKOUT.get(impact, (60, 120))
+            if self._mode == "continuation":
+                after = min(after, self._spike_block_min)  # block only the spike, then ride
             if dt - timedelta(minutes=before) <= now <= dt + timedelta(minutes=after):
-                when = "upcoming" if now < dt else "just released"
+                when = "upcoming" if now < dt else "settling"
                 return False, f"news blackout: {name} ({cur}) {when} [{before}m/{after}m window]"
         return True, ""
 
@@ -174,8 +183,10 @@ class BreakingNewsMonitor:
 class NewsGuard:
     """Combined news/event entry gate. allow_new_entry() returns (allowed, reason)."""
 
-    def __init__(self, fmp_enabled: bool = True, breaking_news: bool = True):
-        self.calendar = EconomicCalendar(fmp_enabled=fmp_enabled)
+    def __init__(self, fmp_enabled: bool = True, breaking_news: bool = True,
+                 mode: str = "block", spike_block_min: int = 15):
+        self.calendar = EconomicCalendar(fmp_enabled=fmp_enabled, mode=mode,
+                                         spike_block_min=spike_block_min)
         self.breaking = BreakingNewsMonitor() if breaking_news else None
 
     def refresh(self, now: datetime | None = None) -> None:

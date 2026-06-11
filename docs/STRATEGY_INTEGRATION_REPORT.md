@@ -251,6 +251,19 @@ repeatedly). Using it to know *when not to trade* (avoid getting chopped up arou
 real, free downside protection — and it pairs naturally with the kill-switch (both block entries
 only). The genuine intelligence is "know when to sit out," not "predict the next candle."
 
+### Post-news continuation (tested both ways)
+- **News-guard "continuation mode"** (`news_guard.mode = "continuation"`): blocks only the
+  pre-event + violent spike, then *allows* entries — so the **validated trend strategy rides the
+  established post-news move** with its proven Donchian edge. ✅ Defensible; reuses the real edge.
+- **Dedicated `news_continuation` strategy** (`strategies/news_continuation.py`): enters
+  specifically on the post-spike breakout. Rough M15 gold backtest (NFP+CPI, 245 trades):
+  **PF 0.85, expR −0.10R, fails permutation** — and that's *before* news-spread blowout. ❌ No edge;
+  shipped only as a requested option, flagged "do not trade standalone."
+
+**Takeaway:** trade post-news *continuation* by letting the trend strategy resume after the spike
+(continuation mode), **not** by building a dedicated news-entry strategy — the latter loses, as
+predicted. News tells you *when*, the trend edge tells you *how*.
+
 ## Bottom line
 
 Of the five research "edges" put through independent, multi-year, cost-aware,
